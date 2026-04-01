@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ app_name }} · Multi‑LLM Code Review</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <div class="mx-auto max-w-7xl px-6 py-10">
+      <header class="mb-10">
+        <div class="inline-flex items-center rounded-full border border-violet-400/40 bg-violet-500/10 px-4 py-1 text-xs font-semibold text-violet-200">Multi‑Model Intelligence</div>
+        <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">ReviewVerse</h1>
+        <p class="mt-4 max-w-3xl text-slate-300">
+          Automatic, production-grade code review platform that combines multiple LLM families and static analysis to generate consensus-driven reports for GitHub repositories.
+        </p>
+      </header>
+
+      <section class="grid gap-6 lg:grid-cols-3">
+        <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 lg:col-span-1">
+          <h2 class="text-xl font-semibold">Run Review</h2>
+          <p class="mt-2 text-sm text-slate-400">Paste a repository URL and optionally select a branch.</p>
+
+          <form id="review-form" class="mt-6 space-y-4">
+            <div>
+              <label class="mb-1 block text-sm text-slate-300" for="repo-url">GitHub Repository URL</label>
+              <input id="repo-url" name="repo_url" type="url" required placeholder="https://github.com/owner/repo"
+                class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none ring-violet-400/0 transition focus:border-violet-400 focus:ring-4" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm text-slate-300" for="branch">Branch (optional)</label>
+              <input id="branch" name="branch" type="text" placeholder="main"
+                class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none ring-violet-400/0 transition focus:border-violet-400 focus:ring-4" />
+            </div>
+            <button id="submit-btn" type="submit"
+              class="w-full rounded-xl bg-violet-500 px-4 py-3 font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-slate-700">
+              Generate Review Report
+            </button>
+          </form>
+
+          <div id="status" class="mt-5 hidden rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3 text-sm"></div>
+
+          <div class="mt-6 rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-400">
+            <p class="font-semibold text-slate-300">Model Families</p>
+            <ul class="mt-2 space-y-1">
+              <li>• OpenAI (cloud)</li>
+              <li>• Anthropic (cloud)</li>
+              <li>• Groq (cloud)</li>
+              <li>• Open-source local models via Ollama</li>
+              <li>• Rule-based static analyzer</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="space-y-6 lg:col-span-2" id="results-root">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-slate-400">
+            Review results will appear here with executive summary, consensus findings, model-by-model analysis, and downloadable markdown report.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
