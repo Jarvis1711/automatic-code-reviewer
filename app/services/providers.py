@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 
 import httpx
@@ -36,9 +37,60 @@ def _build_review_prompt(repo_context: dict, max_prompt_chars: int = 120000) -> 
     return (
         "You are a senior principal engineer performing a production-grade code review. "
         "Return STRICT JSON with keys: summary (string), strengths (array[string]), risk_score (0-100 int), "
-        "issues (array of objects with title, severity[critical|high|medium|low], category, file, line(optional int), suggestion, rationale, confidence[0-1]).\n\n"
+        "issues (array of objects with title, severity[critical|high|medium|low], category, file, line(optional int), suggestion, rationale, confidence[0-1]). "
+        "Return only valid JSON without markdown/code fences. Keep issues <= 10 and keep each rationale concise.\n\n"
         f"Repository Context:\n{json.dumps(repo_context, ensure_ascii=False)[:max_prompt_chars]}"
     )
+
+
+def _extract_json_payload(text: str) -> dict | None:
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    first_brace = cleaned.find("{")
+    if first_brace == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    end_index = -1
+
+    for idx in range(first_brace, len(cleaned)):
+        char = cleaned[idx]
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                end_index = idx + 1
+                break
+
+    candidate = cleaned[first_brace:end_index] if end_index != -1 else cleaned[first_brace:]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
 
 
 def _parse_response_to_review(
@@ -46,9 +98,8 @@ def _parse_response_to_review(
     family: str,
     text: str,
 ) -> ModelReview:
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
+    payload = _extract_json_payload(text)
+    if payload is None:
         cleaned = text.strip()
         fallback_summary = cleaned[:600] if cleaned else "Model returned an empty response."
         fallback_error = (
@@ -212,6 +263,8 @@ class GroqProvider(LLMProvider):
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
+            "max_tokens": 1800,
+            "response_format": {"type": "json_object"},
         }
 
         try:
@@ -226,6 +279,8 @@ class GroqProvider(LLMProvider):
                             {"role": "user", "content": _build_review_prompt(smaller_context, max_prompt_chars=12000)},
                         ],
                         "temperature": 0.2,
+                        "max_tokens": 1400,
+                        "response_format": {"type": "json_object"},
                     }
                     response = await client.post(
                         "https://api.groq.com/openai/v1/chat/completions",
@@ -356,5 +411,46 @@ class OllamaProvider(LLMProvider):
             return ModelReview(model_name=self.name, family=self.family, enabled=True, error=str(exc))
 
 
+class GeminiProvider(LLMProvider):
+    name = "Gemini Reviewer"
+    family = "google-gemini"
+
+    def enabled(self) -> bool:
+        return bool(os.getenv("GEMINI_API_KEY"))
+
+    async def review(self, repo_context: dict) -> ModelReview:
+        if not self.enabled():
+            return ModelReview(model_name=self.name, family=self.family, enabled=False, error="GEMINI_API_KEY is missing")
+
+        model = os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
+        compact_context = _compact_repo_context(repo_context, max_files=10, max_file_chars=1500)
+        prompt = _build_review_prompt(compact_context, max_prompt_chars=30000)
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(url, json=body)
+                response.raise_for_status()
+                payload = response.json()
+                candidates = payload.get("candidates", [])
+                parts = (
+                    candidates[0].get("content", {}).get("parts", [])
+                    if candidates
+                    else []
+                )
+                text = "\n".join(str(part.get("text", "")) for part in parts)
+            return _parse_response_to_review(self.name, self.family, text)
+        except Exception as exc:
+            return ModelReview(model_name=self.name, family=self.family, enabled=True, error=str(exc))
+
+
 def get_default_providers() -> list[LLMProvider]:
-    return [OpenAIProvider(), AnthropicProvider(), GroqProvider(), OllamaProvider()]
+    return [OpenAIProvider(), AnthropicProvider(), GroqProvider(), GeminiProvider(), OllamaProvider()]

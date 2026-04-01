@@ -5,6 +5,7 @@ ReviewVerse is a complete web product that accepts a GitHub repository URL and g
 - OpenAI
 - Anthropic
 - Groq
+- Gemini
 - Open-source local models (Ollama)
 - Deterministic static analysis engine
 
@@ -57,6 +58,7 @@ Set any model keys you have available.
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GROQ_API_KEY`
+- `GEMINI_API_KEY`
 - `OLLAMA_ENDPOINT` (optional, default local)
 
 If some providers are missing, the platform still works with available engines.
